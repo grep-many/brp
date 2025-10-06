@@ -1,0 +1,67 @@
+name: brp-frontend-deploy
+
+on:
+  push:
+    branches: ["main"]  # Trigger on push to main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Check VITE_API_URL secret
+        run: |
+          if [ -z "${{ secrets.VITE_API_URL }}" ]; then
+            echo "VITE_API_URL secret is not set. Cancelling workflow."
+            exit 1
+          fi
+
+      - name: Create .env file
+        run: |
+          cd frontend
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" > .env
+
+      - name: Build Vite app
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Prepare SPA routing
+        run: |
+          cd frontend
+          cp dist/index.html dist/404.html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
